@@ -11,7 +11,7 @@
 -- Implement Vertex - OK
 -- Implement Line - OK
 
--- Implement Object(collection of Vertex, basically an obb)
+-- Implement Object(collection of Vertex)
 
 function Vector(x, y) --Can represent a point or a vector
     local vec = {}
@@ -31,9 +31,14 @@ function Vector(x, y) --Can represent a point or a vector
         return vec.x*other.x + vec.y*other.y
     end
 
-    function vec:angle(other)
+    function vec:angle_with(other)
         -- Calculates angle between the 2 Vectors using dot product (ax * bx + ay * by) 
         return math.acos(vec:normalized():dot_prod(other:normalized()))
+    end
+
+    function vec:angle()
+        -- Calculates angle
+        return math.atan(vec.y, vec.x)
     end
 
     local mt = {
@@ -83,21 +88,52 @@ function Vertex(p1, p2) --Two vectors forming a line
 end
 
 function Line(vert)
+    -- Represents a vertex as mx + b to help with line to line collisions
     local l = {}
+    l.pos = vert.p1
     l.m = (vert.p2.y-vert.p1.y)/
-        (vert.p2.x-vert.p1.x)
-    l.b = -(l.m*vert.p2.x-vert.p2.y)
+        (vert.p2.x-vert.p1.x) -- Find slope
+    l.b = -(l.m*vert.p2.x-vert.p2.y) -- Find y-intercept
     
     function l:debug()
         return "f(x): "..tostring(l.m).."x + "..tostring(l.b)
     end
+
+    function l:draw(c)
+        if c == nil then c = 4 end
+        line(-1, l.m * x + l.b, 241, l.m * 241 + l.b, c)
+    end
     
     function l:collide(other)
+        --if l.m == math.huge then -- If self is a vertical line
+        --    return Vector()
+        --end
         local cx = (l.b-other.b)/(other.m-l.m)
         return Vector(cx, l.m*cx+l.b)
     end
     
     return l
+end
+
+function Object(verts)
+    local obj = {}
+    obj.verts = {}
+
+    for i, v in ipairs(verts) do
+        table.insert(obj.verts, v)
+    end
+
+    trace("Object's vertexes : "..tostring(#obj.verts))
+
+    function obj:draw(c)
+        if c == nil then c = 9 end
+
+        for i, v in ipairs(verts) do
+            line(v.p1.x, v.p1.y, v.p2.x, v.p2.y, c)
+        end
+    end
+
+    return obj
 end
 
 function Ray(start_point, direction) --represents a ray composed of calculated segments and a "head"
@@ -120,8 +156,20 @@ function Ray(start_point, direction) --represents a ray composed of calculated s
         end
     end
     
-    function cast_ray(objects) --Casts the "head" and creates segments if a collision occurs
-        
+    function ray:cast(objects) --Casts the "head" and creates segment if a collision occurs
+        local head = Vertex(
+            Vector(ray.start.x, ray.start.y),
+            Vector(math.cos(ray.dir) * 1000, math.sin(ray.dir) * 1000))
+        head:draw()
+        trace(head.p2.x)
+        trace(head.p2.y)
+        local head_line = Line(head)
+        for i, o in ipairs(objects) do 
+            for j, v in ipairs(o.verts) do
+                local col_point = Line(v):collide(head_line)
+                circ(col_point.x, col_point.y, 2, 2)
+            end
+        end
     end
     
     return ray
@@ -129,47 +177,21 @@ end
 
 PI = math.pi
 
-v1 = Vertex(
-    Vector(0, 0), Vector(240, 136)
-)
-
-v2 = Vertex(
-    Vector(240, 0), Vector(0, 136)
-)
-
-r1 = Ray(Vector(0, 0), 7*PI/4)
-
-for i=0, 10, 1 do
-    table.insert(r1.segments, Vector(math.random(20, 50), math.random(20, 50)))
-end
+r1 = Ray(Vector(0, 68), 0)
+o = Object({
+    Vertex(Vector(220, 68), Vector(228, 68)),
+    Vertex(Vector(228, 68), Vector(232, 78)),
+    Vertex(Vector(232, 78), Vector(222, 78)),
+    Vertex(Vector(222, 78), Vector(220, 68))
+})
 
 function TIC()
-    cls()
     mx, my, c = mouse()
-    if c then v1.p2 = Vector(mx, my) end
-    v1.draw()
-    v2.draw()
-    
-    l1 = Line(v1)
-    l2 = Line(v2)
 
-    tmp_v1 = v1.p2-v1.p1
-    tmp_v2 = v2.p2-v2.p1
-    a = tmp_v1:angle(tmp_v2)
-    print(a)
-
-    v2_angle = math.atan(tmp_v2.y, tmp_v2.x)
-    print(v2_angle, 0, 8)
-    target_a = v2_angle + (v2_angle - a)
-    print(target_a, 0, 16)
-    bounce_v = Vector(
-        math.cos(target_a),
-        math.sin(target_a)
-    )
-
-    r1.draw()
-
-    collide_point = l1:collide(l2)
-    circ(collide_point.x, collide_point.y, 2, 2)
-    line(collide_point.x, collide_point.y, bounce_v.x, bounce_v.y, 2)
+    if c then r1 = Ray(Vector(120, 68), math.atan(my-68, mx-120)) end
+    cls()
+    print(math.atan(my-68, mx-120))
+    r1:cast({o})
+    r1:draw()
+    o:draw()
 end
