@@ -5,11 +5,10 @@
 
 -- TO-DO: 
 -- Finish implementing Ray
-    -- Head is a Line which will collide with Vertex's Line
+    -- Head is a Vertex which will collide with Vertexes from the objects
 
 -- Implement Vector - OK		
 -- Implement Vertex - OK
--- Implement Line - OK
 
 -- Implement Object(collection of Vertex)
 
@@ -69,8 +68,41 @@ function Vertex(p1, p2) --Two vectors forming a line
     local vert = {}
     vert.p1 = p1
     vert.p2 = p2
-    vert.m = 0
-    vert.b = 0
+				
+    vert.m = (vert.p2.y-vert.p1.y)/
+        (vert.p2.x-vert.p1.x) -- Find slope
+    vert.b = -(vert.m*vert.p2.x-vert.p2.y) -- Find y-intercept
+    
+    function vert:debug()
+        return "f(x): "..tostring(l.m).."x + "..tostring(l.b)
+    end
+    
+    function vert:collide(other)
+        vert.m = (vert.p2.y-vert.p1.y)/
+                (vert.p2.x-vert.p1.x) -- Find slope
+        vert.b = -(vert.m*vert.p2.x-vert.p2.y) -- Find y-intercept
+        
+        local col_point = nil
+        if vert.m == math.huge or vert.m == -math.huge then 
+            col_point = Vector(vert.p1.x, vert.p1.x * other.m + other.b)
+            circ(col_point.x, col_point.y, 1, 5)
+        elseif other.m == math.huge or other.m == -math.huge then
+            col_point = Vector(other.p1.x, other.p1.x * vert.m + vert.b)
+            circ(col_point.x, col_point.y, 1, 6)
+        else
+            local cx = (other.b-vert.b)/(vert.m-other.m)
+            col_point = Vector(cx, other.m * cx+other.b)
+            circ(col_point.x, col_point.y, 1, 2)
+        end
+        
+        if ((col_point.x < vert.p1.x and col_point.x > vert.p2.x) or 
+            (col_point.x > vert.p1.x and col_point.x < vert.p2.x)) or
+           ((col_point.y < vert.p1.y and col_point.y > vert.p2.y) or 
+            (col_point.y > vert.p1.y and col_point.y < vert.p2.y)) then
+            return col_point
+        end
+        
+    end
 
     function vert:draw(c)
         --For debug purpose only, use Object's draw method
@@ -87,34 +119,6 @@ function Vertex(p1, p2) --Two vectors forming a line
     return vert
 end
 
-function Line(vert)
-    -- Represents a vertex as mx + b to help with line to line collisions
-    local l = {}
-    l.pos = vert.p1
-    l.m = (vert.p2.y-vert.p1.y)/
-        (vert.p2.x-vert.p1.x) -- Find slope
-    l.b = -(l.m*vert.p2.x-vert.p2.y) -- Find y-intercept
-    
-    function l:debug()
-        return "f(x): "..tostring(l.m).."x + "..tostring(l.b)
-    end
-
-    function l:draw(c)
-        if c == nil then c = 4 end
-        line(-1, l.m * x + l.b, 241, l.m * 241 + l.b, c)
-    end
-    
-    function l:collide(other)
-        --if l.m == math.huge then -- If self is a vertical line
-        --    return Vector()
-        --end
-        local cx = (l.b-other.b)/(other.m-l.m)
-        return Vector(cx, l.m*cx+l.b)
-    end
-    
-    return l
-end
-
 function Object(verts)
     local obj = {}
     obj.verts = {}
@@ -123,13 +127,18 @@ function Object(verts)
         table.insert(obj.verts, v)
     end
 
-    trace("Object's vertexes : "..tostring(#obj.verts))
-
     function obj:draw(c)
         if c == nil then c = 9 end
 
         for i, v in ipairs(verts) do
             line(v.p1.x, v.p1.y, v.p2.x, v.p2.y, c)
+        end
+    end
+
+    function obj:move(movement)
+        for i, v in ipairs(verts) do
+            v.p1 = v.p1 + movement
+            v.p2 = v.p2 + movement
         end
     end
 
@@ -141,7 +150,9 @@ function Ray(start_point, direction) --represents a ray composed of calculated s
     ray.start = start_point --Where the ray will be emitted
     ray.dir = direction --Initial direction in radians of the ray
     
-    ray.segments = {} --Every segement of the ray, are all Vectors
+    ray.segments = {  --Every segement of the ray, are all Vectors
+        ray.start
+    }
 
     function ray:draw(c)
         if c == nil then c = 14 end
@@ -157,18 +168,28 @@ function Ray(start_point, direction) --represents a ray composed of calculated s
     end
     
     function ray:cast(objects) --Casts the "head" and creates segment if a collision occurs
-        local head = Vertex(
-            Vector(ray.start.x, ray.start.y),
-            Vector(math.cos(ray.dir) * 1000, math.sin(ray.dir) * 1000))
-        head:draw()
-        trace(head.p2.x)
-        trace(head.p2.y)
-        local head_line = Line(head)
-        for i, o in ipairs(objects) do 
-            for j, v in ipairs(o.verts) do
-                local col_point = Line(v):collide(head_line)
-                circ(col_point.x, col_point.y, 2, 2)
+        ray.segments = {ray.start}
+        while true do
+            local head = Vertex(
+                ray.segments[#ray.segments], -- The last found segment becomes the head
+                Vector(math.cos(ray.dir) * 1000, math.sin(ray.dir) * 1000))
+            head:draw()
+            local collision_counter = 0
+            for i, o in ipairs(objects) do 
+                for j, v in ipairs(o.verts) do
+                    local col_point = v:collide(head)
+                    if col_point then 
+                        circ(col_point.x, col_point.y, 2, 2) 
+                        local v_angle = (v.p2 - v.p1):angle()
+                        ray.dir = v_angle - (head.p2-head.p1):angle() + v_angle
+                        table.insert(ray.segments, 
+                            Vector(col_point.x-head.p1.x, col_point.y-head.p1.y)
+                        )
+                        collision_counter = collision_counter + 1
+                    end
+                end
             end
+            if collision_counter == 0 then break end -- Continue to cast from previously found collision_points until there's no more collisions
         end
     end
     
@@ -177,21 +198,27 @@ end
 
 PI = math.pi
 
-r1 = Ray(Vector(0, 68), 0)
+r1 = Ray(Vector(0, 0), 0)
 o = Object({
-    Vertex(Vector(220, 68), Vector(228, 68)),
-    Vertex(Vector(228, 68), Vector(232, 78)),
-    Vertex(Vector(232, 78), Vector(222, 78)),
-    Vertex(Vector(222, 78), Vector(220, 68))
+    Vertex(Vector(220, 68), Vector(230, 68)),
+    --Vertex(Vector(230, 68), Vector(230, 78)),
+    --Vertex(Vector(230, 78), Vector(220, 78)),
+    --Vertex(Vector(220, 78), Vector(220, 68))
 })
+o:move(Vector(-50,0))
 
 function TIC()
     mx, my, c = mouse()
+    if btn(0) then o:move(Vector(0, -1)) end
+    if btn(1) then o:move(Vector(0, 1)) end
+    if btn(2) then o:move(Vector(-1, 0)) end
+    if btn(3) then o:move(Vector(1, 0)) end
 
-    if c then r1 = Ray(Vector(120, 68), math.atan(my-68, mx-120)) end
+    r1 = Ray(Vector(1, 1), math.atan(my - r1.start.y, mx - r1.start.x))
     cls()
-    print(math.atan(my-68, mx-120))
+    print(math.atan(my - r1.start.y, mx - r1.start.x))
+    o:draw()
+
     r1:cast({o})
     r1:draw()
-    o:draw()
 end
